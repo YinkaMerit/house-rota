@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>House Rota</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<style>
+  :root{
+    --ink:#2b2823;
+    --paper:#f7f3ec;
+    --line:#d9d1c2;
+    --group1:#8a5a3b;
+    --group1-bg:#f1e4d8;
+    --group2:#3b6e5c;
+    --group2-bg:#dceae2;
+    --accent:#c65b3f;
+    --done:#f0ede6;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Georgia', 'Iowan Old Style', serif;
+    padding:0 0 40px;
+  }
+  header{
+    padding:28px 20px 20px;
+    border-bottom:2px solid var(--ink);
+    text-align:center;
+  }
+  header h1{
+    margin:0;
+    font-size:26px;
+    letter-spacing:0.5px;
+    font-weight:600;
+  }
+  header p{
+    margin:6px 0 0;
+    font-size:13px;
+    color:#6b6455;
+    font-family:Helvetica,Arial,sans-serif;
+    text-transform:uppercase;
+    letter-spacing:1.5px;
+  }
+  .wrap{
+    max-width:520px;
+    margin:0 auto;
+    padding:0 16px;
+  }
+  .card{
+    background:#fff;
+    border:1px solid var(--line);
+    border-radius:6px;
+    margin-top:22px;
+    overflow:hidden;
+  }
+  .card-head{
+    padding:16px 18px 10px;
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+  }
+  .card-head h2{
+    margin:0;
+    font-size:18px;
+    font-weight:600;
+  }
+  .card-head .freq{
+    font-family:Helvetica,Arial,sans-serif;
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:1px;
+    color:#8a8374;
+  }
+  .card-body{
+    padding:6px 18px 18px;
+  }
+  .turn-banner{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:12px 14px;
+    border-radius:6px;
+    margin-bottom:14px;
+    font-family:Helvetica,Arial,sans-serif;
+  }
+  .turn-banner .who{
+    font-size:15px;
+    font-weight:700;
+  }
+  .turn-banner .task-detail{
+    font-size:12px;
+    opacity:0.85;
+    margin-top:2px;
+  }
+  .g1{ background:var(--group1-bg); color:var(--group1); }
+  .g2{ background:var(--group2-bg); color:var(--group2); }
+  button{
+    font-family:Helvetica,Arial,sans-serif;
+    font-size:13px;
+    font-weight:600;
+    border:none;
+    border-radius:5px;
+    padding:10px 14px;
+    cursor:pointer;
+    background:var(--accent);
+    color:#fff;
+    width:100%;
+    letter-spacing:0.3px;
+  }
+  button:active{ opacity:0.85; }
+  .jobs{
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+  }
+  .job-row{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    width:100%;
+    background:#fff;
+    border:1px solid var(--line);
+    border-radius:6px;
+    padding:12px 14px;
+    text-align:left;
+    color:var(--ink);
+    transition:background 0.15s;
+  }
+  .job-row .check{
+    flex:0 0 24px;
+    height:24px;
+    width:24px;
+    border-radius:50%;
+    border:2px solid var(--line);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:14px;
+    font-weight:700;
+    color:#fff;
+  }
+  .job-row.is-done{
+    background:var(--done);
+    border-color:#cfe0d4;
+  }
+  .job-row.is-done .check{
+    background:#3b6e5c;
+    border-color:#3b6e5c;
+  }
+  .job-row.is-done .job-label{
+    text-decoration:line-through;
+    color:#9a9484;
+  }
+  .job-text{
+    display:flex;
+    flex-direction:column;
+    line-height:1.3;
+  }
+  .job-label{
+    font-size:15px;
+    font-weight:600;
+  }
+  .job-person{
+    font-size:13px;
+    color:#7a7364;
+  }
+  button.secondary{
+    background:transparent;
+    border:1px solid var(--line);
+    color:var(--ink);
+    margin-top:8px;
+  }
+  .log{
+    margin-top:14px;
+    border-top:1px dashed var(--line);
+    padding-top:10px;
+  }
+  .log-title{
+    font-family:Helvetica,Arial,sans-serif;
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:1px;
+    color:#8a8374;
+    margin-bottom:6px;
+  }
+  .log-entry{
+    display:flex;
+    justify-content:space-between;
+    font-size:13px;
+    padding:5px 0;
+    border-bottom:1px solid #f1eee6;
+    font-family:Helvetica,Arial,sans-serif;
+  }
+  .log-entry:last-child{ border-bottom:none; }
+  .log-entry .badge{
+    font-size:11px;
+    font-weight:700;
+    padding:2px 7px;
+    border-radius:10px;
+  }
+  .empty-log{
+    font-size:12px;
+    color:#a39d8c;
+    font-style:italic;
+    font-family:Helvetica,Arial,sans-serif;
+  }
+  .rotation-key{
+    margin-top:26px;
+    padding:14px 18px;
+    font-size:12px;
+    color:#7a7364;
+    font-family:Helvetica,Arial,sans-serif;
+    text-align:center;
+    line-height:1.6;
+  }
+  .loading{
+    text-align:center;
+    padding:40px;
+    color:#a39d8c;
+    font-family:Helvetica,Arial,sans-serif;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🏠 House Rota</h1>
+  <p>Femi & Moses — Yinka & Deji</p>
+  <div id="sync-status" style="font-family:Helvetica,Arial,sans-serif;font-size:11px;letter-spacing:0.5px;margin-top:8px;color:#a39d8c;">● Connecting…</div>
+</header>
+
+<div class="wrap" id="app">
+  <div class="loading">Loading rota…</div>
+</div>
+
+<div class="rotation-key">
+  Sweep &amp; clean alternates by week between groups.<br>
+  Mowing turn advances each time it's marked done — front/back swaps within the group too.
+</div>
+
+<script>
+// Each task has a 4-step cycle. Group alternates; the two jobs swap
+// between the two people each time that group comes around.
+const CLEAN_CYCLE = [
+  { group: "Femi & Moses", cls: "g1", sweep: "Moses", bathkitchen: "Femi"  },
+  { group: "Yinka & Deji", cls: "g2", sweep: "Deji",  bathkitchen: "Yinka" },
+  { group: "Femi & Moses", cls: "g1", sweep: "Femi",  bathkitchen: "Moses" },
+  { group: "Yinka & Deji", cls: "g2", sweep: "Yinka", bathkitchen: "Deji"  }
+];
+
+const MOW_CYCLE = [
+  { group: "Yinka & Deji", cls: "g2", front: "Deji",  back: "Yinka" },
+  { group: "Femi & Moses", cls: "g1", front: "Femi",  back: "Moses" },
+  { group: "Yinka & Deji", cls: "g2", front: "Yinka", back: "Deji"  },
+  { group: "Femi & Moses", cls: "g1", front: "Moses", back: "Femi"  }
+];
+
+// job definitions per task: id in the cycle object + display label
+const TASKS = {
+  clean: {
+    key: "clean-state",
+    cycle: CLEAN_CYCLE,
+    jobs: [
+      { id: "sweep", label: "Sweep house" },
+      { id: "bathkitchen", label: "Bath/kitchen" }
+    ]
+  },
+  mow: {
+    key: "mow-state",
+    cycle: MOW_CYCLE,
+    jobs: [
+      { id: "front", label: "Front lawn" },
+      { id: "back", label: "Back lawn" }
+    ]
+  }
+};
+
+function fmtDate(iso){
+  const d = new Date(iso);
+  return d.toLocaleDateString(undefined, { weekday:'short', day:'numeric', month:'short' });
+}
+
+function freshState(){ return { turnIndex: 0, done: {}, history: [] }; }
+
+// ---- Firebase Realtime Database (shared sync across all phones) ----
+const firebaseConfig = {
+  apiKey: "AIzaSyDzI8mqEwBe5Mj1PlKc-KDs11VR01ZMXVo",
+  authDomain: "house-rota-7eeb5.firebaseapp.com",
+  databaseURL: "https://house-rota-7eeb5-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "house-rota-7eeb5",
+  storageBucket: "house-rota-7eeb5.firebasestorage.app",
+  messagingSenderId: "383483953065",
+  appId: "1:383483953065:web:3cbd4b00d64b92ccdeceb8"
+};
+
+const cache = { "clean-state": freshState(), "mow-state": freshState() };
+let db = null;
+
+function initFirebase(){
+  try{
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.database();
+    // live listeners: any change from any device re-renders everyone
+    Object.keys(cache).forEach(key => {
+      db.ref(key).on('value', snap => {
+        cache[key] = snap.val() || freshState();
+        render();
+      });
+    });
+    setStatus('synced');
+  }catch(e){
+    console.warn("Firebase unavailable, running local-only:", e);
+    setStatus('offline');
+  }
+}
+
+function getState(key){
+  return cache[key] || freshState();
+}
+
+function saveState(key, value){
+  cache[key] = value;
+  if(db){
+    db.ref(key).set(value).catch(e => {
+      console.warn("Save failed:", e);
+      setStatus('offline');
+    });
+  }
+}
+
+function setStatus(state){
+  const el = document.getElementById('sync-status');
+  if(!el) return;
+  if(state === 'synced'){ el.textContent = '● Synced'; el.style.color = '#3b6e5c'; }
+  else { el.textContent = '● Offline — changes not shared'; el.style.color = '#b06a4f'; }
+}
+
+function toggleJob(taskId, jobId){
+  const task = TASKS[taskId];
+  const state = JSON.parse(JSON.stringify(getState(task.key)));
+  const turn = task.cycle[state.turnIndex % task.cycle.length];
+
+  state.done = state.done || {};
+  state.done[jobId] = !state.done[jobId];
+
+  // if every job in this turn is done, log it and advance to the next group
+  const allDone = task.jobs.every(j => state.done[j.id]);
+  if(allDone){
+    const entry = { group: turn.group, cls: turn.cls, date: new Date().toISOString() };
+    task.jobs.forEach(j => { entry[j.id] = turn[j.id]; });
+    state.history = state.history || [];
+    state.history.unshift(entry);
+    state.history = state.history.slice(0, 8);
+    state.turnIndex = (state.turnIndex + 1) % task.cycle.length;
+    state.done = {};
+  }
+  saveState(task.key, state);
+  render();
+}
+
+function render(){
+  const cleanState = getState(TASKS.clean.key);
+  const mowState = getState(TASKS.mow.key);
+
+  document.getElementById('app').innerHTML =
+    cardHtml('clean', TASKS.clean, cleanState, 'Sweep + Bath/kitchen', '2×/month') +
+    cardHtml('mow', TASKS.mow, mowState, 'Mow lawns', 'as needed');
+}
+
+function logHtml(entries, task){
+  if(!entries || entries.length === 0){
+    return `<div class="empty-log">No entries yet — first turn done shows up here.</div>`;
+  }
+  return entries.map(e => {
+    const label = task.jobs.map(j => `${e[j.id]} (${j.label.toLowerCase()})`).join(' · ');
+    const bg = e.cls === 'g1' ? 'var(--group1-bg)' : 'var(--group2-bg)';
+    const fg = e.cls === 'g1' ? 'var(--group1)' : 'var(--group2)';
+    return `<div class="log-entry">
+      <span>${label}</span>
+      <span style="display:flex;align-items:center;gap:8px;">
+        <span style="color:#a39d8c;white-space:nowrap">${fmtDate(e.date)}</span>
+      </span>
+    </div>`;
+  }).join('');
+}
+
+function jobRowsHtml(taskId, task, state){
+  const turn = task.cycle[state.turnIndex % task.cycle.length];
+  const done = state.done || {};
+  return task.jobs.map(j => {
+    const isDone = !!done[j.id];
+    return `<button class="job-row ${isDone ? 'is-done' : ''}" onclick="toggleJob('${taskId}','${j.id}')">
+      <span class="check">${isDone ? '✓' : ''}</span>
+      <span class="job-text">
+        <span class="job-label">${j.label}</span>
+        <span class="job-person">${turn[j.id]}</span>
+      </span>
+    </button>`;
+  }).join('');
+}
+
+function cardHtml(taskId, task, state, title, freq){
+  const turn = task.cycle[state.turnIndex % task.cycle.length];
+  return `
+    <div class="card">
+      <div class="card-head">
+        <h2>${title}</h2>
+        <span class="freq">${freq}</span>
+      </div>
+      <div class="card-body">
+        <div class="turn-banner ${turn.cls}">
+          <div>
+            <div class="who">${turn.group}</div>
+            <div class="task-detail">up next</div>
+          </div>
+        </div>
+        <div class="jobs">
+          ${jobRowsHtml(taskId, task, state)}
+        </div>
+        <div class="log">
+          <div class="log-title">Recent</div>
+          ${logHtml(state.history, task)}
+        </div>
+      </div>
+    </div>`;
+}
+
+render();
+initFirebase();
+</script>
+
+</body>
+</html>
