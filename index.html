@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>House Rota</title>
+<title>House Maintenance</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <style>
@@ -168,6 +168,32 @@
     font-size:13px;
     color:#7a7364;
   }
+  .undo-btn{
+    margin-top:10px;
+    background:transparent;
+    border:1px solid var(--line);
+    color:#7a7364;
+    font-size:13px;
+    font-weight:600;
+    padding:8px;
+    width:100%;
+  }
+  .undo-btn:active{ background:var(--done); }
+  .bills{ font-family:Helvetica,Arial,sans-serif; font-size:14px; }
+  .bill-row{ display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px solid #f1eee6; }
+  .bill-row:last-child{ border-bottom:none; }
+  .paid-by{ color:#a39d8c; font-size:12px; }
+  .amount{ font-family:Helvetica,Arial,sans-serif; font-size:13px; font-weight:700; white-space:nowrap; color:var(--ink); }
+  .amount.receives{ color:var(--group2); }
+  .calc{ margin-top:14px; border-top:1px dashed var(--line); padding-top:10px; font-family:Helvetica,Arial,sans-serif; }
+  .calc summary{ cursor:pointer; font-size:13px; font-weight:600; color:#7a7364; }
+  .calc-intro{ font-size:12px; color:#7a7364; margin:10px 0; line-height:1.5; }
+  .calc-person{ padding:8px 0; border-bottom:1px solid #f1eee6; }
+  .calc-person:last-child{ border-bottom:none; }
+  .calc-name{ font-size:14px; font-weight:700; margin-bottom:4px; }
+  .calc-ratio{ font-weight:400; font-size:12px; color:#a39d8c; }
+  .calc-line{ display:flex; justify-content:space-between; font-size:12px; color:#6b6455; padding:1px 0; }
+  .calc-total{ font-weight:700; color:var(--ink); margin-top:3px; }
   button.secondary{
     background:transparent;
     border:1px solid var(--line);
@@ -228,8 +254,8 @@
 <body>
 
 <header>
-  <h1>🏠 House Rota</h1>
-  <p>Femi & Moses — Yinka & Deji</p>
+  <h1>🏠 House Maintenance</h1>
+  <p>Chores &amp; bills</p>
   <div id="sync-status" style="font-family:Helvetica,Arial,sans-serif;font-size:11px;letter-spacing:0.5px;margin-top:8px;color:#a39d8c;">● Connecting…</div>
 </header>
 
@@ -297,7 +323,8 @@ const firebaseConfig = {
   appId: "1:383483953065:web:3cbd4b00d64b92ccdeceb8"
 };
 
-const cache = { "clean-state": freshState(), "mow-state": freshState() };
+const DEFAULTS = { "clean-state": freshState, "mow-state": freshState, "bills-paid": () => ({}) };
+const cache = { "clean-state": freshState(), "mow-state": freshState(), "bills-paid": {} };
 let db = null;
 
 function initFirebase(){
@@ -307,7 +334,7 @@ function initFirebase(){
     // live listeners: any change from any device re-renders everyone
     Object.keys(cache).forEach(key => {
       db.ref(key).on('value', snap => {
-        cache[key] = snap.val() || freshState();
+        cache[key] = snap.val() || DEFAULTS[key]();
         render();
       });
     });
@@ -341,8 +368,13 @@ function setStatus(state){
 
 function toggleJob(taskId, jobId){
   const task = TASKS[taskId];
-  const state = JSON.parse(JSON.stringify(getState(task.key)));
+  const current = getState(task.key);
+  const state = JSON.parse(JSON.stringify(current));
   const turn = task.cycle[state.turnIndex % task.cycle.length];
+
+  // snapshot the state as it was, so this action can be undone (single step)
+  const snapshot = JSON.parse(JSON.stringify(current));
+  delete snapshot.prev;
 
   state.done = state.done || {};
   state.done[jobId] = !state.done[jobId];
@@ -358,8 +390,152 @@ function toggleJob(taskId, jobId){
     state.turnIndex = (state.turnIndex + 1) % task.cycle.length;
     state.done = {};
   }
+  state.prev = snapshot;
   saveState(task.key, state);
   render();
+}
+
+function undoLast(taskId){
+  const task = TASKS[taskId];
+  const state = getState(task.key);
+  if(!state.prev) return;
+  const restored = JSON.parse(JSON.stringify(state.prev));
+  restored.prev = null; // one-step undo only
+  saveState(task.key, restored);
+  render();
+}
+
+
+// ---- Monthly bills ----
+// Ratios sum to 5 (one per person): 1.0 = an equal fifth of the bills.
+const BILLS = [
+  { name: "Rent",             amount: 110000, paidBy: null   },
+  { name: "Water",            amount: 25804,  paidBy: "Femi" }, // £93 + £165.04
+  { name: "Gas & electric",   amount: 35000,  paidBy: "Femi" },
+  { name: "Council tax",      amount: 20400,  paidBy: "Mum"  },
+  { name: "Internet",         amount: 4300,   paidBy: "Mum"  }
+];
+const PEOPLE = [
+  { name: "Yinka", weight: 1.379 },
+  { name: "Femi",  weight: 1.264 },
+  { name: "Deji",  weight: 1.034 },
+  { name: "Mum",   weight: 0.919 },
+  { name: "Moses", weight: 0.404 }
+];
+
+// Deji's reduction is shared equally by the other four.
+const DEJI_REDUCTION = 12500; // £125
+const ADJUST = { Deji: -DEJI_REDUCTION };
+PEOPLE.filter(p=>p.name!=="Deji").forEach(p=>{ ADJUST[p.name] = DEJI_REDUCTION / 4; });
+
+function gbp(p){ return "£" + (Math.abs(p)/100).toLocaleString('en-GB',{minimumFractionDigits:2, maximumFractionDigits:2}); }
+
+// Split in pence using largest-remainder so shares add up to the exact total.
+function computeShares(){
+  const total = BILLS.reduce((s,b)=>s+b.amount,0);
+  const wSum = PEOPLE.reduce((s,p)=>s+p.weight,0);
+  const raw = PEOPLE.map(p => total * p.weight / wSum);
+  const floors = raw.map(Math.floor);
+  let left = total - floors.reduce((a,b)=>a+b,0);
+  raw.map((r,i)=>({i, rem:r-floors[i]})).sort((a,b)=>b.rem-a.rem)
+     .slice(0,left).forEach(o=>floors[o.i]++);
+  return PEOPLE.map((p,i)=>{
+    const share = floors[i];
+    const direct = BILLS.filter(b=>b.paidBy===p.name).reduce((s,b)=>s+b.amount,0);
+    const adj = ADJUST[p.name] || 0;
+    return { ...p, share, direct, adj, net: share-direct+adj };
+  });
+}
+
+function monthKey(){
+  const d = new Date();
+  return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0");
+}
+function monthLabel(){
+  return new Date().toLocaleDateString('en-GB',{month:'long', year:'numeric'});
+}
+
+function togglePaid(name){
+  const all = JSON.parse(JSON.stringify(cache["bills-paid"] || {}));
+  const mk = monthKey();
+  all[mk] = all[mk] || {};
+  all[mk][name] = !all[mk][name];
+  saveState("bills-paid", all);
+  render();
+}
+
+function calcHtml(shares, total){
+  const wSum = PEOPLE.reduce((s,p)=>s+p.weight,0);
+  const unit = total / wSum;
+  const sign = v => v < 0 ? `− ${gbp(v)}` : `+ ${gbp(v)}`;
+  const rows = shares.map(s=>`
+    <div class="calc-person">
+      <div class="calc-name">${s.name} <span class="calc-ratio">ratio ${s.weight}</span></div>
+      <div class="calc-line"><span>${s.weight} × ${gbp(unit)}</span><span>${gbp(s.share)}</span></div>
+      ${s.direct ? `<div class="calc-line"><span>Bills paid directly</span><span>− ${gbp(s.direct)}</span></div>` : ''}
+      <div class="calc-line"><span>${s.name==="Deji" ? "Deji's reduction" : "Share of Deji's £125 (÷4)"}</span><span>${sign(s.adj)}</span></div>
+      <div class="calc-line calc-total"><span>${s.net < 0 ? "Receives" : "Pays"}</span><span>${gbp(s.net)}</span></div>
+    </div>`).join('');
+  return `
+    <details class="calc">
+      <summary>Show ratios &amp; calculations</summary>
+      <div class="calc-intro">
+        Ratios add up to ${+wSum.toFixed(3)} (one per person), so 1.0 is an equal fifth:
+        ${gbp(total)} ÷ ${+wSum.toFixed(3)} = <b>${gbp(unit)}</b>. Above 1.0 pays more than an equal split, below pays less.
+        Deji's £125 reduction is then covered equally by the other four.
+      </div>
+      ${rows}
+    </details>`;
+}
+
+function billsHtml(){
+  const shares = computeShares();
+  const total = BILLS.reduce((s,b)=>s+b.amount,0);
+  const paid = (cache["bills-paid"] || {})[monthKey()] || {};
+  const doneCount = shares.filter(s=>paid[s.name]).length;
+
+  const billRows = BILLS.map(b=>`
+    <div class="bill-row">
+      <span>${b.name}${b.paidBy ? `<span class="paid-by"> · paid by ${b.paidBy}</span>` : ''}</span>
+      <span>${gbp(b.amount)}</span>
+    </div>`).join('');
+
+  const personRows = shares.map(s=>{
+    const isDone = !!paid[s.name];
+    const receives = s.net < 0;
+    const action = receives ? `Receives ${gbp(s.net)}` : `Pays ${gbp(s.net)}`;
+    let sub = `Share ${gbp(s.share)}`;
+    if(s.direct > 0) sub += ` − ${gbp(s.direct)} bills`;
+    if(s.adj) sub += s.adj < 0 ? ` − ${gbp(s.adj)} reduction` : ` + ${gbp(s.adj)} towards Deji's reduction`;
+    return `<button class="job-row ${isDone ? 'is-done' : ''}" onclick="togglePaid('${s.name}')">
+      <span class="check">${isDone ? '✓' : ''}</span>
+      <span class="job-text" style="flex:1">
+        <span class="job-label">${s.name}</span>
+        <span class="job-person">${sub}</span>
+      </span>
+      <span class="amount ${receives ? 'receives' : ''}">${action}</span>
+    </button>`;
+  }).join('');
+
+  return `
+    <div class="card">
+      <div class="card-head">
+        <h2>Monthly bills</h2>
+        <span class="freq">${gbp(total)}/month</span>
+      </div>
+      <div class="card-body">
+        <div class="bills">${billRows}</div>
+        <div class="turn-banner g2" style="margin-top:14px">
+          <div>
+            <div class="who">${monthLabel()}</div>
+            <div class="task-detail">${doneCount} of ${shares.length} settled — tap your name once you've paid</div>
+          </div>
+        </div>
+        <div class="jobs">${personRows}</div>
+        <div class="empty-log" style="margin-top:10px">Net payments go to the rent pot. Ticks reset each month.</div>
+        ${calcHtml(shares, total)}
+      </div>
+    </div>`;
 }
 
 function render(){
@@ -368,7 +544,8 @@ function render(){
 
   document.getElementById('app').innerHTML =
     cardHtml('clean', TASKS.clean, cleanState, 'Sweep + Bath/kitchen', '2×/month') +
-    cardHtml('mow', TASKS.mow, mowState, 'Mow lawns', 'as needed');
+    cardHtml('mow', TASKS.mow, mowState, 'Mow lawns', 'as needed') +
+    billsHtml();
 }
 
 function logHtml(entries, task){
@@ -421,6 +598,7 @@ function cardHtml(taskId, task, state, title, freq){
         <div class="jobs">
           ${jobRowsHtml(taskId, task, state)}
         </div>
+        ${state.prev ? `<button class="undo-btn" onclick="undoLast('${taskId}')">↩ Undo last tick</button>` : ''}
         <div class="log">
           <div class="log-title">Recent</div>
           ${logHtml(state.history, task)}
